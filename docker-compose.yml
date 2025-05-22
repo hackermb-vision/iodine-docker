@@ -1,0 +1,15 @@
+services:
+  iodine:
+    restart: unless-stopped
+    container_name: iodine
+    build: .
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "54:53/udp"
+    environment:
+      - IODINE_PW=Password
+      - IODINE_DOMAIN=iodine.local

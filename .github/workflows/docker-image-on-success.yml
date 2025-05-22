@@ -1,0 +1,63 @@
+name: Build Docker Image if Base Updated
+
+on:
+  workflow_run:
+    workflows: ["Check for Base Image Update"]
+    types:
+      - completed
+
+jobs:
+  build-if-updated:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    permissions:
+      actions: read   # Needed to download artifacts
+      contents: read
+
+    steps:
+      - name: Download digest artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: base-digest
+          path: .
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+        continue-on-error: true  # So we can detect if no artifact was uploaded
+
+      - name: Check if digest artifact exists
+        id: check
+        run: |
+          if [[ -f .base_digest ]]; then
+            echo "updated=true" >> $GITHUB_OUTPUT
+          else
+            echo "updated=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Exit if no update detected
+        if: steps.check.outputs.updated == 'false'
+        run: |
+          echo "No base image update. Skipping build."
+          exit 0
+
+      - name: Checkout repository
+        if: steps.check.outputs.updated == 'true'
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        if: steps.check.outputs.updated == 'true'
+        env:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+        run: |
+          echo "$password" | docker login -u "$username" --password-stdin
+
+      - name: Build the Docker image
+        if: steps.check.outputs.updated == 'true'
+        run: |
+          docker build . -f Dockerfile -t hackermb/iodine:latest
+
+      - name: Push the Docker image
+        if: steps.check.outputs.updated == 'true'
+        run: |
+          docker push hackermb/iodine:latest
